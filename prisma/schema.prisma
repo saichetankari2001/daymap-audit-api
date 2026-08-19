@@ -1,0 +1,40 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// One row = one audit record: "who did what, to what, when."
+//
+// date / jurisdiction / schoolCode are the brief's required fields and get
+// real indexed columns since every query filters on them.
+//
+// userId also gets its own indexed column, even though it's not in the
+// brief's strict "required" list: Harry confirmed (2026-08-18 email) that
+// user details show up in almost every entry in practice, and "show me
+// everything this user accessed" is exactly the kind of investigation this
+// system needs to answer quickly.
+//
+// Everything else (username, userType, resourceType, resourceName,
+// resourceId, and any future arbitrary field a school wants to track) lives
+// in `extra` — a flexible JSON blob, GIN-indexed (see the migration) so it
+// can still be filtered on without a schema change every time a new field
+// shows up.
+model Entry {
+  id           String   @id @default(uuid())
+  sequence     Int      @unique @default(autoincrement())
+  date         DateTime
+  jurisdiction String
+  schoolCode   String   @map("school_code")
+  userId       String?  @map("user_id")
+  extra        Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([jurisdiction, schoolCode, date])
+  @@index([userId])
+  @@map("entries")
+}
