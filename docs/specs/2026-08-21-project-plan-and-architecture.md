@@ -84,11 +84,6 @@ A few things would help us finalise the remaining work:
 2. Do we need more than read/write permissions — for example, access scoped to a specific jurisdiction, or admin-only key management?
 3. Could Civica share a small sample of real audit data, or should we generate our own?
 4. Is the "action" field (view, create, update, delete) a fixed list, or free text like jurisdiction and school code?
-5. Should a single query filter across multiple jurisdictions or schools at once, or is it always scoped to one?
-6. Is there an expected response time for queries, particularly the larger ones?
-7. Who's expected to create API keys day to day — end users, or only administrators?
-8. How will this be assessed at the end of semester — the architecture document, the working demo, or both?
-9. What's the best way to keep you updated as we go — regular check-ins, or as-needed?
 
 ## 10. Who's Doing What
 
