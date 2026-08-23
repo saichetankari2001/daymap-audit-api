@@ -1,0 +1,25 @@
+digraph architecture {
+  rankdir=TB;
+  fontname="Helvetica";
+  node [fontname="Helvetica", shape=box, style="rounded,filled", fontsize=13, margin="0.25,0.15"];
+  edge [fontname="Helvetica", fontsize=11, color="#555555"];
+
+  labelloc="t";
+  label="MG1 Audit System — Architecture\n(solid green = built today · dashed grey = designed, not built)";
+  fontsize=16;
+
+  ClientApps [label="Client Applications\n(Daymap web app, admin tools)", fillcolor="#e8f1fa", color="#2a5d8f"];
+
+  IngestAPI [label="Ingest / Query API\n(Node.js + Express)", fillcolor="#e6f4ea", color="#1e7d3c", penwidth=2];
+  Postgres [label="PostgreSQL\n(hot storage)", fillcolor="#e6f4ea", color="#1e7d3c", penwidth=2];
+
+  KeyStore [label="API Key Store\n(roles + scopes)", fillcolor="#f0f0f0", color="#8a8a8a", style="rounded,filled,dashed"];
+  ArchivalJob [label="Archival Job\n(scheduled)", fillcolor="#f0f0f0", color="#8a8a8a", style="rounded,filled,dashed"];
+  ColdStorage [label="Cold Storage\n(long-term, write-once)", fillcolor="#f0f0f0", color="#8a8a8a", style="rounded,filled,dashed"];
+
+  ClientApps -> IngestAPI [label="  writes & reads"];
+  IngestAPI -> Postgres [label="  read / write", penwidth=2, color="#1e7d3c"];
+  IngestAPI -> KeyStore [label="  validates key", style=dashed];
+  Postgres -> ArchivalJob [label="  past retention window", style=dashed];
+  ArchivalJob -> ColdStorage [label="  moves records", style=dashed];
+}

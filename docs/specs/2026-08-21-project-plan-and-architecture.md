@@ -1,189 +1,126 @@
 # MG1: Web Application Audit System — Project Plan & Architecture
 
-**Prepared for:** meeting with Harry Macheda (Civica/Daymap), 21 August 2026
-**Status:** Architecture decided and partially built; API + one data store working today.
+Prepared by the MG1 team for our meeting with Harry Macheda (Civica/Daymap).
+Team: Saichetan (lead), Vishnu, Rahul, Indra, Surbhi, Nivil, Basil.
 
 ## 1. Project Overview
 
-The Web Application Audit System (MG1) is a standalone audit microservice that captures, stores, and retrieves a record of activity within Daymap's high-traffic web applications. It exposes a REST API that other systems call to log audit events (who accessed or changed what data, and when) and to query that history for compliance, security, and dispute-resolution purposes.
+Daymap needs a way to keep a reliable record of who accessed or changed sensitive data across its school-management platform, so that if a compliance investigation ever comes up, there's an accurate history to look back on. Our job is to build that record-keeping system as a standalone service: other Daymap systems send it events over a REST API, and it stores and serves that history back on request.
 
-This document is the team's single source of truth: confirmed requirements, the architecture we've actually decided on (not a menu of options), what's built vs. still to build, and the delivery plan.
+This document sets out what we've confirmed with Harry so far, the architecture we've settled on, what's already built and working, and how we're splitting the remaining work across the team for the rest of the semester.
 
-## 2. Requirements Summary (confirmed by Harry, 18 August email)
+## 2. What Harry Has Confirmed
 
-| Area | Requirement |
-|---|---|
-| Query volume | Typical queries return hundreds to thousands of records; occasional queries may return hundreds of thousands. |
-| Jurisdiction / school fields | Drawn from a fixed list in production, but treated as free text for this project. |
-| Audit record content | Regularly includes user details (username, ID, type) and details of the data being accessed (type, name, ID). |
-| Cold storage | Send-and-forget: once archived, never retrieved through the API. |
-| Deployment | No cloud deployment required — local setup (Docker Compose) is the semester deliverable. |
-| Access control | API access managed via API keys/tokens with varying permission levels. |
-| Priority order | 1) System design/architecture. 2) A working API with at least one datastore implemented. |
+Harry answered our clarifying questions by email on 18 August. The key points:
 
-## 3. System Architecture (decided, not a menu of options)
+- A typical query comes back with anywhere from a few hundred to a few thousand records, though occasionally it could be in the hundreds of thousands.
+- Jurisdiction and school code are drawn from a fixed list in Daymap's production systems, but for our purposes we can treat them as plain free text.
+- Most audit records will include some detail about the user involved (username, ID, type) and about what was accessed (type, name, ID).
+- Once data moves into cold storage, it's genuinely done with — the API never needs to read it back.
+- We don't need to deploy to Azure or any cloud environment this semester. A local setup running through Docker Compose is enough.
+- Access to the API is controlled through API keys with different permission levels.
+- Harry was explicit about priority: getting the design and architecture right matters more than having every feature built, but we do need a real, working API against at least one datastore.
 
-Five logical pieces. Three are built and running today; two are designed but not yet built, per Harry's own stated priority.
+## 3. Architecture
 
-| Component | Responsibility | Status |
-|---|---|---|
-| **Ingest / Query API** | Accepts write requests (log an event) and read requests (query history). REST API. | ✅ **Built** |
-| **Hot storage (PostgreSQL)** | Primary datastore for recent audit records; serves all read/write traffic. Indexed on jurisdiction, school, user, and date. | ✅ **Built** |
-| **API key store** | Stores hashed API keys and their permission scope (read/write). Checked by middleware on every request. | ⬜ Designed, not built |
-| **Archival job** | Runs on a schedule, independent of the API; moves records past a retention threshold from hot to cold storage. | ⬜ Designed, not built |
-| **Cold storage** | Long-term, low-cost retention. Write-once; never queried by the API. | ⬜ Designed, not built |
+We landed on five pieces. Two of them are built and running today; the rest are designed and agreed, but not built yet — which lines up with Harry's own priority order above.
 
-### 3.1 Request flow
+![MG1 architecture diagram](assets/architecture.png)
 
-**Today (built):**
-1. A client application sends a request directly to the Ingest/Query API.
-2. Write requests validate the required fields (`date`, `jurisdiction`, `schoolCode`) and insert directly into Postgres.
-3. Read requests query Postgres, with snapshot-consistent pagination applied — the first page of a query fixes a point in time, and later pages of that same query ignore anything written after, so a busy write stream never causes duplicate or skipped results across pages.
+**The ingest/query API** is the only thing other systems talk to. It checks incoming requests, validates the required fields, and either writes a new record or answers a query.
 
-**Planned (not yet built), once auth and the archival pipeline are added:**
-4. Every request will additionally include an API key; the API validates it against the key store and confirms the caller's permission (read or write) before processing.
-5. Independently of the request path, a scheduled archival job will move records past the configured retention window from hot storage into cold storage.
-6. Once in cold storage, records are retained for compliance but are not accessible via the API.
+**Hot storage**, a PostgreSQL database, is where recent records actually live and where all the searching happens. It's indexed on the fields people will search by most.
 
-### 3.2 Why this shape, and not a larger cloud-native pipeline
+**The API key store** doesn't exist yet, but the plan is straightforward: hashed keys sit in Postgres alongside a role and a set of allowed jurisdictions/schools, and a middleware layer checks every request against it before anything else runs.
 
-An earlier internal draft explored a fuller Azure-native pipeline (API Management, Event Hubs, Stream Analytics, Data Lake Gen2, Synapse, Power BI, etc.). We're deliberately **not** presenting that as the semester plan: Harry told us directly that no cloud deployment is required and local setup is sufficient, and building against real Azure services would add cost, setup complexity, and risk without being asked for. The leaner design above is what we can actually build, test, and demonstrate this semester. The fuller Azure picture remains a reasonable *future* direction if Daymap ever wants to run this in production at full scale — worth mentioning as the long-term picture, not committing to it now.
+**The archival job** will run on its own schedule, separate from the API, and move anything past a configurable age out of hot storage.
 
-## 4. Technology Stack (decided)
+**Cold storage** is where that older data ends up — cheap, long-term, and, as Harry confirmed, never read back through the API once it's there.
 
-| Layer | Choice | Why |
-|---|---|---|
-| Language/runtime | **Node.js + TypeScript** | Fits the workload (many small concurrent requests, not heavy computation). TypeScript catches mistakes before code runs — a real safety net given how much of this is built with AI assistance and human review. |
-| API framework | **Express** | Simple, minimal, well-documented; matches the REST API the brief asks for. |
-| Hot storage | **PostgreSQL** | Handles the confirmed query pattern well with indexing; free/open-source, matching the cost-consciousness in the brief. |
-| Database access | **Prisma** | Type-safe queries and migrations, reducing a class of mistakes at the boundary between code and database. |
-| Cold storage | **Local files now → Azure Blob Storage (Archive tier) later** | Matches Harry's own suggestion — cheapest realistic option, and the swap is designed to be trivial when the time comes. |
-| Local deployment | **Docker Compose** | One command brings up Postgres identically on any team member's (or Harry's) machine. |
+### How a request moves through the system today
 
-## 5. Data Model (built)
+A client sends a write request with a date, jurisdiction, and school code (plus whatever else it wants to include). The API checks those three required fields are present and inserts the record straight into Postgres. A read request comes back through the same API, and if it's paginated, the first page of results fixes a point in time — later pages of that same query stay locked to that point, so a burst of new writes partway through paging never causes records to be skipped or duplicated across pages. That last part sounds like a small detail, but it was one of Harry's specific requirements, and it's already built and covered by a test.
+
+Once auth and the archival pipeline exist, every request will also carry an API key, which the API checks against the key store before doing anything else, and the archival job will quietly move aged-out records to cold storage in the background.
+
+### A note on scope
+
+We looked at a fuller cloud-native version of this — something built around Azure API Management, Event Hubs, Stream Analytics, and so on — and it's a reasonable direction if Daymap ever wanted to run this at full production scale. But Harry told us directly that no cloud deployment is expected this semester, so we're not building toward Azure infrastructure we won't actually get to test or demonstrate. What's described above is what we can build, run locally, and show working.
+
+## 4. Technology Choices
+
+We're building this in **Node.js and TypeScript**. The workload here is mostly a high volume of small, simple requests rather than heavy computation, which is exactly what Node handles well, and TypeScript catches a lot of careless mistakes before the code even runs. For the API layer itself we're using **Express**, which is minimal enough to stay out of the way. Data lives in **PostgreSQL**, which comfortably handles the kind of filtered, indexed queries Harry described and costs nothing to run. We're using **Prisma** to talk to the database, mainly because it keeps our queries type-safe and handles migrations for us. For cold storage, we're starting with plain files on disk and designing it so that swapping in Azure Blob Storage later — Harry's own suggestion — is a small change, not a rewrite. Everything runs locally through **Docker Compose**, so anyone on the team (or Harry) can bring the whole thing up with one command.
+
+## 5. Data Model
 
 ```prisma
 model Entry {
   id           String   @id @default(uuid())
-  sequence     Int      @unique @default(autoincrement())  // ordering, for pagination
-  date         DateTime                                     // required
-  jurisdiction String                                       // required
-  schoolCode   String                                       // required
-  userId       String?                                      // promoted to its own column
-  extra        Json     @default("{}")                      // everything else, arbitrary
+  sequence     Int      @unique @default(autoincrement())
+  date         DateTime
+  jurisdiction String
+  schoolCode   String
+  userId       String?
+  extra        Json     @default("{}")
   createdAt    DateTime @default(now())
 
   @@index([jurisdiction, schoolCode, date])
   @@index([userId])
-  // + a GIN index on `extra` for fast filtering on arbitrary fields
 }
 ```
 
-`date`, `jurisdiction`, and `schoolCode` are the brief's required fields. `userId` gets its own indexed column even though it's not formally "required" — Harry told us user details show up in almost every entry in practice, and "show me everything this user accessed" is exactly the kind of question this system needs to answer quickly. Everything else (username, userType, resourceType, resourceName, resourceId, and any future field a school wants to track) lives in `extra`, a flexible JSON field, GIN-indexed so it can still be searched without a schema change every time something new shows up.
+`date`, `jurisdiction`, and `schoolCode` are the required fields from the brief. We also gave `userId` its own column, even though it wasn't formally required — Harry mentioned user details show up in almost every entry in practice, and "what did this person access" is a natural question this system needs to answer quickly. Everything else — username, what kind of resource was touched, its name and ID, and anything a school wants to add in future — goes into a flexible `extra` field, which is indexed so it can still be searched without us needing to change the schema every time something new comes up.
 
-## 6. API Design
+## 6. API Endpoints
 
-| Method | Endpoint | Purpose | Status |
-|---|---|---|---|
-| `POST` | `/entries` | Log one entry, or an array of entries. | ✅ Built |
-| `GET` | `/entries` | Query audit history — filter by jurisdiction, schoolCode, userId, date range, or any arbitrary field; snapshot-consistent pagination. | ✅ Built |
-| `POST` | `/api-keys` | Create a new API key with a permission scope (admin only). | ⬜ Planned |
-| `DELETE` | `/api-keys/:id` | Revoke an API key. | ⬜ Planned |
+`POST /entries` accepts a single record or an array of them and is working today. `GET /entries` queries the history, with filtering by jurisdiction, school, user, date range, or any of the arbitrary extra fields, and it's also working today. `POST /api-keys` and `DELETE /api-keys/:id` for creating and revoking keys are designed but not yet built.
 
-*Note: naming (`/entries` vs. `/audit-events`) should be confirmed as a team before the next milestone — the working code currently uses `/entries`.*
+One small open item: the endpoints are currently named `/entries`; we should confirm as a team whether we'd rather call them `/audit-events` before this gets locked in further.
 
-## 7. What's Actually Built Today (for the demo)
+## 7. What We Can Actually Demonstrate Right Now
 
-- `POST /entries` and `GET /entries`, fully working against a real local Postgres database
-- Required-field validation (missing `date`/`jurisdiction`/`schoolCode` is rejected with a `422`)
-- Filtering on jurisdiction, schoolCode, userId, date range, and arbitrary extra fields
-- **Snapshot-consistent pagination, genuinely proven by an automated test**: page 1 of a query is fetched, more data is written, page 2 of the *same* query still only sees what existed at the time page 1 was requested
-- A visual dashboard (`/dashboard.html`) for demoing this live — write an entry, browse/filter entries, see the architecture picture (built vs. planned) at a glance
-- 9 integration tests + 2 unit tests, all passing; TypeScript typecheck and lint clean
+Writing and querying entries both work against a real local Postgres database, including validation that rejects a record missing any required field. Filtering works across every field we've mentioned, including arbitrary ones. The pagination behaviour Harry asked for — later pages ignoring data written after the first page was requested — is built and proven by an automated test, not just assumed to work. There's also a small visual dashboard we can pull up live to write and browse entries during the meeting, rather than only showing raw API calls. Everything currently passes our test suite (11 tests) along with type-checking and linting.
 
-## 8. Delivery Plan — 9 Weeks
+## 8. Delivery Plan
 
-Adjusted to reflect where we actually are: Phase 1 is done, Phase 2 has started.
+We're using a 9-week structure, matching Harry's stated priorities: get the architecture right first, then a working API against one datastore, then archival, then load testing and polish.
 
-| Week | Phase | Focus | Status |
-|---|---|---|---|
-| 1 | Phase 1 | Client meeting; finalise requirements; agree architecture, data model, and tech stack. | ✅ Done |
-| 2 | Phase 1 | Architecture document; repo, Docker Compose skeleton, dev environment. | ✅ Done |
-| 3 | Phase 2 | Hot storage schema and migrations; write endpoint (`POST /entries`). | ✅ Done |
-| 4 | Phase 2 | Read/query endpoint with filtering and snapshot-consistent pagination. | ✅ Done |
-| 5 | Phase 2 | API key creation, storage, and permission scopes; auth middleware on all endpoints. | ⬜ Next |
-| 6 | Phase 2 | Integration testing of the full API; sample data; mid-project check-in with Harry. | ⬜ Planned |
-| 7 | Phase 3 | Archival job; cold storage; configurable retention threshold. | ⬜ Planned |
-| 8 | Phase 4 | Load testing against expected query volumes; logging/observability; fixes. | ⬜ Planned |
-| 9 | Phase 4 | Documentation, local deployment instructions, demo; final presentation. | ⬜ Planned |
+Weeks 1 and 2 covered agreeing the architecture and setting up the repo and dev environment — both done. Weeks 3 and 4 were the write and read endpoints, including pagination — also done. Week 5 is API keys and permissions, which is next. Week 6 is broader integration testing and sample data, alongside a mid-project check-in with Harry. Week 7 is the archival job and cold storage. Week 8 is load testing against the volumes Harry described, plus basic logging. Week 9 wraps up documentation, deployment instructions, and the final demo.
 
-## 9. Client Meeting Preparation
+## 9. Preparing for the Meeting
 
-### 9.1 What we're bringing today
-- This document
-- A live demo: the dashboard, a real write, a real filtered query, and the snapshot-pagination proof
-- A rough allocation of the 7 team members across workstreams (auth, archival job, testing/docs, integration) for the weeks ahead
+We're bringing this document, a live demo (the dashboard, a real write, a filtered query, and the pagination proof), and a first pass at how we're splitting the remaining work across the team.
 
-### 9.2 Questions for Harry
-1. What retention period should trigger archival from hot to cold storage (e.g. 30, 90 days)?
-2. What permission scopes are actually needed — just read/write, or more granular (per-jurisdiction access, admin-only key management)?
-3. Can Civica share a small sample of real audit log data, or should we finalise our own generated dataset?
-4. Is there a fixed set of "action" values, or is that free text too?
-5. Should queries support filtering by multiple jurisdictions/schools at once, or always a single scope?
-6. Is there an expected response time for queries, given the occasional hundreds-of-thousands result set?
-7. Who is expected to create API keys — end users, or only administrators?
-8. How will the project be assessed at the end of semester — architecture document, working demo, or both?
-9. What's the best way to keep you in the loop going forward — regular check-ins, or as-needed?
+**Questions we want to ask Harry:**
 
-### 9.3 Questions we should expect from Harry, and our honest answers
+1. What retention period should trigger moving data from hot to cold storage — 30 days, 90 days, something else?
+2. Do we need more than just read/write permissions — for example, access scoped to a specific jurisdiction, or admin-only key management?
+3. Could Civica share a small sample of real audit data, or should we generate our own for now?
+4. Is the "action" field (view, create, update, delete) a fixed list, or free text like jurisdiction and school code?
+5. Should a single query be able to filter across multiple jurisdictions or schools at once, or is it always scoped to one?
+6. Is there an expected response time for queries, particularly the larger ones?
+7. Who's expected to create API keys day to day — end users, or only administrators?
+8. How will this be assessed at the end of semester — the architecture document, the working demo, or both?
+9. What's the best way to keep you updated as we go — regular check-ins, or only when we need input?
 
-| Likely question | Our answer |
-|---|---|
-| Walk me through your architecture. | Ingest/Query API → Postgres (hot storage) today; API keys, an archival job, and cold storage are designed but not built yet. |
-| Why Node.js/TypeScript and Postgres? | Fits the workload, TypeScript catches mistakes early, Postgres handles the confirmed query pattern well and is free. |
-| How do you handle write-heavy ingestion without slowing the source app? | Designed to move to a queue (Event Hubs) feeding a separate writer process once we build that piece — today, direct writes are fine at prototype scale, but this is the next architectural step, not yet built. |
-| How does your permission model work? | Designed (API key → role → allowed jurisdictions/schools) but not built yet — next on our plan (Week 5). |
-| What happens if query volume spikes to hundreds of thousands of records? | Pagination is already built and tested; full load testing against that volume is planned for Week 8. |
-| How are you splitting the work across seven people? | By component: API/auth, archival job, testing/docs, integration — to be finalised this week. |
-| What are you unsure about, or what do you need from me? | See Section 9.2 above. |
+**Questions we're expecting from Harry, and how we'd answer them:**
 
-## 10. Team Task Assignment (7 members)
+He'll likely ask us to walk through the architecture, which we can do in under two minutes using the diagram above. If he asks why Node.js and Postgres, our answer is that they fit the workload well, TypeScript adds a real safety net, and Postgres handles the query pattern he described without any licensing cost. If he asks how we'll keep ingestion fast under heavy load, the honest answer is that today's version writes directly to Postgres, and the plan for handling much larger bursts is a queue sitting in front of a separate writer process — designed, not yet built. If he asks about permissions, we'll say the model is designed (key, role, allowed jurisdictions and schools) but building it is next on our list. If he asks what happens at very high query volumes, we can point to the pagination work already done and note that full load testing is scheduled for week 8. And if he asks how seven people are splitting the work, that's Section 10 below.
 
-Mapped to the remaining weeks in Section 8. Starting split below — swap between people freely based on interest/strengths, this isn't rigid.
+## 10. Who's Doing What
 
-### Vishnu & Rahul — Auth & API Keys (Week 5)
-- Design the API key data model in Postgres (key hash, role, allowed jurisdictions/schools)
-- Build `POST /api-keys` (admin-only, creates a key + returns the raw key once)
-- Build `DELETE /api-keys/:id` (revoke)
-- Build the auth middleware: validate the key on every request, enforce read/write role, enforce jurisdiction/schoolCode scope
-- Unit + integration tests for all of the above
+This is a starting point — everyone should feel free to swap tasks based on interest, this isn't set in stone.
 
-### Indra & Surbhi — Archival Job & Cold Storage (Week 7)
-- Design the retention window as a config value (e.g. `RETENTION_DAYS`)
-- Build a scheduled job that finds entries older than the retention window
-- Write those entries out to local files (cold storage), then remove them from hot storage
-- Tests proving nothing is lost in the move, and that archived entries are genuinely gone from the API afterward
+**Vishnu and Rahul** are taking API keys and authentication: designing the key table, building the endpoints to create and revoke keys, and writing the middleware that checks every request against a caller's role and allowed jurisdictions.
 
-### Nivil — Sample Data & Integration Testing (Week 6)
-- Generate realistic sample audit data (many jurisdictions, schools, users, varied extra fields) — or coordinate with Harry if Civica provides a sample instead
-- Broader integration tests: multiple filters combined, missing/unusual fields, large result sets
-- Prepare the demo script and sample queries for the mid-project check-in with Harry
+**Indra and Surbhi** are taking the archival job: working out how the retention window gets configured, building the scheduled process that moves old records out of Postgres, and writing it to disk as cold storage.
 
-### Basil — Load Testing & Observability (Week 8)
-- Load-test the write endpoint against realistic burst volume (tooling like `autocannon`)
-- Add basic logging/metrics (request counts, latency)
-- Document results; tune indexes/queries if anything's slow
+**Nivil** is putting together realistic sample data and expanding our integration tests to cover combinations of filters and edge cases, and will help prepare what we actually show Harry at the week 6 check-in.
 
-### Saichetan (Team Lead) — Integration Owner, Docs, Client Liaison (ongoing + Week 9)
-- Keep this document current as decisions are made
-- Coordinate across the other workstreams so the pieces actually fit together
-- Main point of contact with Harry; runs check-in meetings
-- Owns final documentation, local deployment instructions, and the final demo/presentation
+**Basil** is handling load testing — pushing the write endpoint under a realistic burst of traffic and adding basic logging so we can see how the system behaves under pressure.
 
-## 11. Assumptions & Open Items
+**Saichetan** is keeping this document up to date, making sure the different pieces of work actually fit together, staying in touch with Harry between meetings, and pulling together the final documentation and demo in week 9.
 
-- Sample audit data will be either supplied by Civica or generated by the team — either is acceptable per Harry.
-- Exact retention period before archival: to be confirmed with Harry.
-- Specific permission scopes: to be confirmed with Harry.
-- Endpoint naming (`/entries` vs. `/audit-events`): to be finalised by the team.
-- The fuller Azure-native architecture (API Management, Event Hubs, Stream Analytics, Data Lake, Synapse, Power BI) remains a valid long-term production direction, not part of this semester's deliverable.
+## 11. Open Questions and Assumptions
+
+A few things are still unresolved and worth tracking: whether we generate our own sample data or wait for Civica to provide some, the exact retention period before archival, exactly which permission scopes we need, and whether `/entries` or `/audit-events` is the better name for the endpoints. The fuller Azure-based architecture we looked at early on stays on the table as a long-term direction if this ever needs to run at full production scale, but it isn't part of what we're delivering this semester.
