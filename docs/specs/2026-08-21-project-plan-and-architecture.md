@@ -119,7 +119,7 @@ This is a starting point — everyone should feel free to swap tasks based on in
 
 **Basil** is handling load testing — pushing the write endpoint under a realistic burst of traffic and adding basic logging so we can see how the system behaves under pressure.
 
-**Saichetan** is keeping this document up to date, making sure the different pieces of work actually fit together, staying in touch with Harry between meetings, and pulling together the final documentation and demo in week 9.
+**Saichetan (Team Lead)** is keeping this document up to date, making sure the different pieces of work actually fit together, staying in touch with Harry between meetings, and pulling together the final documentation and demo in week 9.
 
 ## 11. Open Questions and Assumptions
 
