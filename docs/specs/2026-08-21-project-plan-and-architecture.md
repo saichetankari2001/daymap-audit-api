@@ -149,32 +149,32 @@ Adjusted to reflect where we actually are: Phase 1 is done, Phase 2 has started.
 
 ## 10. Team Task Assignment (7 members)
 
-Mapped to the remaining weeks in Section 8. Swap "Member N" for real names.
+Mapped to the remaining weeks in Section 8. Starting split below — swap between people freely based on interest/strengths, this isn't rigid.
 
-### Member 1 & 2 — Auth & API Keys (Week 5)
+### Vishnu & Rahul — Auth & API Keys (Week 5)
 - Design the API key data model in Postgres (key hash, role, allowed jurisdictions/schools)
 - Build `POST /api-keys` (admin-only, creates a key + returns the raw key once)
 - Build `DELETE /api-keys/:id` (revoke)
 - Build the auth middleware: validate the key on every request, enforce read/write role, enforce jurisdiction/schoolCode scope
 - Unit + integration tests for all of the above
 
-### Member 3 & 4 — Archival Job & Cold Storage (Week 7)
+### Indra & Surbhi — Archival Job & Cold Storage (Week 7)
 - Design the retention window as a config value (e.g. `RETENTION_DAYS`)
 - Build a scheduled job that finds entries older than the retention window
 - Write those entries out to local files (cold storage), then remove them from hot storage
 - Tests proving nothing is lost in the move, and that archived entries are genuinely gone from the API afterward
 
-### Member 5 — Sample Data & Integration Testing (Week 6)
+### Nivil — Sample Data & Integration Testing (Week 6)
 - Generate realistic sample audit data (many jurisdictions, schools, users, varied extra fields) — or coordinate with Harry if Civica provides a sample instead
 - Broader integration tests: multiple filters combined, missing/unusual fields, large result sets
 - Prepare the demo script and sample queries for the mid-project check-in with Harry
 
-### Member 6 — Load Testing & Observability (Week 8)
+### Basil — Load Testing & Observability (Week 8)
 - Load-test the write endpoint against realistic burst volume (tooling like `autocannon`)
 - Add basic logging/metrics (request counts, latency)
 - Document results; tune indexes/queries if anything's slow
 
-### Member 7 (or you) — Integration Owner, Docs, Client Liaison (ongoing + Week 9)
+### Saichetan (Team Lead) — Integration Owner, Docs, Client Liaison (ongoing + Week 9)
 - Keep this document current as decisions are made
 - Coordinate across the other workstreams so the pieces actually fit together
 - Main point of contact with Harry; runs check-in meetings
