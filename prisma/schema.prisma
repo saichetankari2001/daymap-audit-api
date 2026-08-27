@@ -10,31 +10,48 @@ datasource db {
 
 // One row = one audit record: "who did what, to what, when."
 //
-// date / jurisdiction / schoolCode are the brief's required fields and get
-// real indexed columns since every query filters on them.
+// Field names match Daymap's real audit log format directly (per the sample
+// log Harry shared on 2026-08-27), rather than our own earlier placeholder
+// names — tenantId/schoolId/timestampUtc, not jurisdiction/schoolCode/date.
 //
-// userId also gets its own indexed column, even though it's not in the
-// brief's strict "required" list: Harry confirmed (2026-08-18 email) that
-// user details show up in almost every entry in practice, and "show me
-// everything this user accessed" is exactly the kind of investigation this
-// system needs to answer quickly.
+// timestampUtc, tenantId, and schoolId are the brief's required fields.
+// userId, eventType, entityType, application, and success are all promoted
+// to their own indexed columns even though only the first three fields are
+// formally "required" — the sample data shows these show up in nearly every
+// entry with a small, predictable set of values, and they're exactly the
+// kind of thing a compliance investigation would search by directly (e.g.
+// "show me every failed access", "show me everything read through
+// ParentPortal").
 //
-// Everything else (username, userType, resourceType, resourceName,
-// resourceId, and any future arbitrary field a school wants to track) lives
-// in `extra` — a flexible JSON blob, GIN-indexed (see the migration) so it
-// can still be filtered on without a schema change every time a new field
-// shows up.
+// entityId and category are kept as plain (unindexed) columns — present in
+// most entries, but not an obvious filter target on their own.
+//
+// Everything else, including the `data` object from the source format and
+// any future field a school wants to track, lives in `extra` — a flexible
+// JSON blob, GIN-indexed (see the migration) so it can still be filtered on
+// without a schema change every time something new shows up.
 model Entry {
-  id           String   @id @default(uuid())
-  sequence     Int      @unique @default(autoincrement())
-  date         DateTime
-  jurisdiction String
-  schoolCode   String   @map("school_code")
-  userId       String?  @map("user_id")
-  extra        Json     @default("{}")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  sequence      Int      @unique @default(autoincrement())
+  eventId       String?  @map("event_id") // the source system's own event ID, if it sent one
+  timestampUtc  DateTime @map("timestamp_utc")
+  tenantId      String   @map("tenant_id")
+  schoolId      String   @map("school_id")
+  userId        String?  @map("user_id")
+  eventType     String?  @map("event_type") // e.g. Read, Update, Delete, Download
+  entityType    String?  @map("entity_type") // e.g. Parent, Staff, Student
+  entityId      String?  @map("entity_id")
+  category      String?
+  application   String? // which Daymap system produced this event
+  success       Boolean?
+  extra         Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at")
 
-  @@index([jurisdiction, schoolCode, date])
+  @@index([tenantId, schoolId, timestampUtc])
   @@index([userId])
+  @@index([eventType])
+  @@index([entityType])
+  @@index([application])
+  @@index([success])
   @@map("entries")
 }

@@ -15,14 +15,16 @@ afterAll(async () => {
 
 function entry(overrides: Record<string, unknown> = {}) {
   return {
-    date: '2026-08-18T09:15:00.000Z',
-    jurisdiction: 'Victoria',
-    schoolCode: 'SCH-4471',
-    userId: 'u-8823',
-    username: 'mrs.patel',
-    userType: 'teacher',
-    resourceType: 'attendance_record',
-    resourceId: 'student-5521',
+    timestampUtc: '2026-08-27T06:41:45.000Z',
+    tenantId: 'DaymapHostDev',
+    schoolId: 'DaymapDev',
+    userId: '1642',
+    eventType: 'Read',
+    entityType: 'Parent',
+    entityId: '47',
+    category: 'StudentProfile',
+    application: 'ParentPortal',
+    success: true,
     ...overrides,
   };
 }
@@ -31,25 +33,31 @@ describe('POST /entries', () => {
   it('rejects an entry missing a required field', async () => {
     const res = await request(app)
       .post('/entries')
-      .send({ jurisdiction: 'Victoria', schoolCode: 'SCH-4471' });
+      .send({ tenantId: 'DaymapHostDev', schoolId: 'DaymapDev' });
     expect(res.status).toBe(422);
   });
 
-  it('accepts a single entry and stores required fields, userId, and extras', async () => {
-    const res = await request(app).post('/entries').send(entry());
+  it('accepts a single entry and stores required fields, promoted columns, and extras', async () => {
+    const res = await request(app)
+      .post('/entries')
+      .send(entry({ eventVersion: 1, data: { note: 'sample' } }));
     expect(res.status).toBe(201);
     expect(res.body.accepted).toBe(1);
 
     const stored = await prisma.entry.findMany();
     expect(stored).toHaveLength(1);
-    expect(stored[0].jurisdiction).toBe('Victoria');
-    expect(stored[0].schoolCode).toBe('SCH-4471');
-    expect(stored[0].userId).toBe('u-8823');
+    expect(stored[0].tenantId).toBe('DaymapHostDev');
+    expect(stored[0].schoolId).toBe('DaymapDev');
+    expect(stored[0].userId).toBe('1642');
+    expect(stored[0].eventType).toBe('Read');
+    expect(stored[0].entityType).toBe('Parent');
+    expect(stored[0].entityId).toBe('47');
+    expect(stored[0].category).toBe('StudentProfile');
+    expect(stored[0].application).toBe('ParentPortal');
+    expect(stored[0].success).toBe(true);
     expect(stored[0].extra).toMatchObject({
-      username: 'mrs.patel',
-      userType: 'teacher',
-      resourceType: 'attendance_record',
-      resourceId: 'student-5521',
+      eventVersion: 1,
+      data: { note: 'sample' },
     });
   });
 
@@ -66,37 +74,54 @@ describe('POST /entries', () => {
 });
 
 describe('GET /entries filtering', () => {
-  it('filters by jurisdiction and schoolCode', async () => {
+  it('filters by tenantId and schoolId', async () => {
     await request(app)
       .post('/entries')
       .send([
-        entry({ jurisdiction: 'Victoria', schoolCode: 'SCH-4471' }),
-        entry({ jurisdiction: 'NSW', schoolCode: 'SCH-9001' }),
+        entry({ tenantId: 'DaymapHostDev', schoolId: 'DaymapDev' }),
+        entry({ tenantId: 'OtherTenant', schoolId: 'OtherSchool' }),
       ]);
 
-    const res = await request(app).get('/entries').query({ jurisdiction: 'Victoria' });
+    const res = await request(app).get('/entries').query({ tenantId: 'DaymapHostDev' });
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
-    expect(res.body.data[0].jurisdiction).toBe('Victoria');
+    expect(res.body.data[0].tenantId).toBe('DaymapHostDev');
   });
 
   it('filters by userId, the promoted column', async () => {
     await request(app)
       .post('/entries')
-      .send([entry({ userId: 'u-8823' }), entry({ userId: 'u-9999' })]);
+      .send([entry({ userId: '1642' }), entry({ userId: '9999' })]);
 
-    const res = await request(app).get('/entries').query({ userId: 'u-8823' });
+    const res = await request(app).get('/entries').query({ userId: '1642' });
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
-    expect(res.body.data[0].userId).toBe('u-8823');
+    expect(res.body.data[0].userId).toBe('1642');
+  });
+
+  it('filters by eventType, entityType, application, and success', async () => {
+    await request(app)
+      .post('/entries')
+      .send([
+        entry({ eventType: 'Read', entityType: 'Parent', application: 'ParentPortal', success: true }),
+        entry({ eventType: 'Delete', entityType: 'Staff', application: 'Daymap', success: false }),
+      ]);
+
+    const res = await request(app)
+      .get('/entries')
+      .query({ eventType: 'Delete', entityType: 'Staff', application: 'Daymap', success: 'false' });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].eventType).toBe('Delete');
+    expect(res.body.data[0].success).toBe(false);
   });
 
   it('filters by date range', async () => {
     await request(app)
       .post('/entries')
       .send([
-        entry({ date: '2026-01-01T00:00:00.000Z' }),
-        entry({ date: '2026-08-18T09:15:00.000Z' }),
+        entry({ timestampUtc: '2026-01-01T00:00:00.000Z' }),
+        entry({ timestampUtc: '2026-08-27T09:15:00.000Z' }),
       ]);
 
     const res = await request(app)
@@ -106,20 +131,18 @@ describe('GET /entries filtering', () => {
     expect(res.body.data).toHaveLength(1);
   });
 
-  it('filters on an arbitrary extra field (not a required field)', async () => {
+  it('filters on an arbitrary extra field not covered by a named column', async () => {
     await request(app)
       .post('/entries')
       .send([
-        entry({ resourceType: 'attendance_record' }),
-        entry({ resourceType: 'health_record' }),
+        entry({ deviceType: 'desktop' }),
+        entry({ deviceType: 'mobile' }),
       ]);
 
-    const res = await request(app)
-      .get('/entries')
-      .query({ 'extra[resourceType]': 'health_record' });
+    const res = await request(app).get('/entries').query({ 'extra[deviceType]': 'mobile' });
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
-    expect(res.body.data[0].extra.resourceType).toBe('health_record');
+    expect(res.body.data[0].extra.deviceType).toBe('mobile');
   });
 });
 

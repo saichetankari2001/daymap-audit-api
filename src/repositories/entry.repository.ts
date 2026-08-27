@@ -9,15 +9,47 @@ export interface EntryPage {
 }
 
 function splitEntry(input: CreateEntryInput): {
-  date: Date;
-  jurisdiction: string;
-  schoolCode: string;
+  timestampUtc: Date;
+  tenantId: string;
+  schoolId: string;
+  eventId: string | null;
   userId: string | null;
+  eventType: string | null;
+  entityType: string | null;
+  entityId: string | null;
+  category: string | null;
+  application: string | null;
+  success: boolean | null;
   extra: Prisma.InputJsonValue;
 } {
-  const { date, jurisdiction, schoolCode, ...extra } = input;
-  const userId = typeof extra.userId === 'string' ? extra.userId : null;
-  return { date, jurisdiction, schoolCode, userId, extra: extra as Prisma.InputJsonValue };
+  const {
+    timestampUtc,
+    tenantId,
+    schoolId,
+    eventId,
+    userId,
+    eventType,
+    entityType,
+    entityId,
+    category,
+    application,
+    success,
+    ...extra
+  } = input;
+  return {
+    timestampUtc,
+    tenantId,
+    schoolId,
+    eventId: eventId ?? null,
+    userId: userId ?? null,
+    eventType: eventType ?? null,
+    entityType: entityType ?? null,
+    entityId: entityId ?? null,
+    category: category ?? null,
+    application: application ?? null,
+    success: success ?? null,
+    extra: extra as Prisma.InputJsonValue,
+  };
 }
 
 export const EntryRepository = {
@@ -47,14 +79,18 @@ export const EntryRepository = {
       : [];
 
     const where: Prisma.EntryWhereInput = {
-      jurisdiction: filters.jurisdiction,
-      schoolCode: filters.schoolCode,
+      tenantId: filters.tenantId,
+      schoolId: filters.schoolId,
       userId: filters.userId,
+      eventType: filters.eventType,
+      entityType: filters.entityType,
+      application: filters.application,
+      success: filters.success,
       sequence: {
         gt: filters.cursor,
         lte: snapshotSequence,
       },
-      date: {
+      timestampUtc: {
         gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
         lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
       },
