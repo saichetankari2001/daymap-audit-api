@@ -1,263 +1,500 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8" />
-<title>Daymap Audit System — Demo</title>
-<style>
-  :root {
-    --ink: #1a1a1a;
-    --muted: #6b6b6b;
-    --border: #e0e0e0;
-    --accent: #2a5d8f;
-    --accent-light: #e8f1fa;
-    --live: #1e7d3c;
-    --live-bg: #e6f4ea;
-    --planned: #8a8a8a;
-    --planned-bg: #f0f0f0;
-    --bg: #fafafa;
-    --card: #ffffff;
-  }
-  * { box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    margin: 0;
-    background: var(--bg);
-    color: var(--ink);
-  }
-  header {
-    padding: 28px 32px 20px;
-    border-bottom: 1px solid var(--border);
-    background: var(--card);
-  }
-  header h1 { margin: 0 0 4px; font-size: 22px; }
-  header p { margin: 0; color: var(--muted); font-size: 14px; }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px 32px 64px; }
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 24px;
-  }
-  .card h2 {
-    margin: 0 0 4px;
-    font-size: 15px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-  }
-  .card .sub { font-size: 13px; color: var(--muted); margin: 0 0 16px; }
-
-  /* --- Architecture diagram --- */
-  .diagram {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    padding: 12px 0;
-  }
-  .diagram-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .box {
-    border-radius: 8px;
-    padding: 12px 16px;
-    font-size: 13px;
-    font-weight: 600;
-    text-align: center;
-    min-width: 120px;
-  }
-  .box .tag {
-    display: block;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-top: 4px;
-  }
-  .box.live { background: var(--live-bg); color: var(--live); border: 1px solid var(--live); }
-  .box.live .tag { color: var(--live); }
-  .box.planned {
-    background: var(--planned-bg);
-    color: var(--planned);
-    border: 1px dashed var(--planned);
-  }
-  .box.planned .tag { color: var(--planned); }
-  .arrow { color: var(--muted); font-size: 20px; }
-  .legend { display: flex; gap: 20px; margin-top: 16px; font-size: 12px; color: var(--muted); }
-  .legend span { display: inline-flex; align-items: center; gap: 6px; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-  .dot.live { background: var(--live); }
-  .dot.planned { background: var(--planned); }
-
-  /* --- Forms --- */
-  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
-  .field { display: flex; flex-direction: column; gap: 4px; }
-  .field label { font-size: 12px; color: var(--muted); }
-  .field input, .field textarea {
-    padding: 8px 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 14px;
-    min-width: 160px;
-    font-family: inherit;
-  }
-  .field.grow { flex: 1; min-width: 260px; }
-  .field.grow textarea { width: 100%; min-height: 70px; resize: vertical; }
-  button {
-    padding: 9px 16px;
-    border-radius: 6px;
-    border: 1px solid var(--accent);
-    background: var(--accent);
-    color: white;
-    font-size: 14px;
-    cursor: pointer;
-  }
-  button:hover { opacity: 0.9; }
-
-  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 16px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
-  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-
-  .status { padding: 12px 14px; border-radius: 8px; font-size: 14px; margin-top: 12px; display: none; }
-  .status.show { display: block; }
-  .status.ok { background: var(--live-bg); color: var(--live); }
-  .status.bad { background: #fce8e6; color: #b3261e; }
-  .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
-</style>
-</head>
-<body>
-
-<header>
-  <h1>Daymap Audit System — Prototype</h1>
-  <p>Live demo of the write + read API, against a real PostgreSQL database.</p>
-</header>
-
-<main>
-
-  <section class="card">
-    <h2>Architecture</h2>
-    <p class="sub">What's actually running today, vs. what's designed but not built yet.</p>
-    <div class="diagram">
-      <div class="diagram-row">
-        <div class="box live">Client apps<span class="tag">sends entries</span></div>
-        <div class="arrow">→</div>
-        <div class="box live">Ingest / Query API<span class="tag">live — this page</span></div>
-        <div class="arrow">⇢</div>
-        <div class="box planned">Event Hubs queue<span class="tag">planned</span></div>
-        <div class="arrow">⇢</div>
-        <div class="box planned">Writer worker<span class="tag">planned</span></div>
-      </div>
-      <div class="arrow" style="align-self:center;">↓</div>
-      <div class="diagram-row">
-        <div class="box live">PostgreSQL<span class="tag">live — hot storage</span></div>
-        <div class="arrow">⇢</div>
-        <div class="box planned">Sync job<span class="tag">planned</span></div>
-        <div class="arrow">⇢</div>
-        <div class="box planned">Cold storage<span class="tag">planned</span></div>
-      </div>
-    </div>
-    <div class="legend">
-      <span><i class="dot live"></i> Built and working right now</span>
-      <span><i class="dot planned"></i> Designed, not built this semester</span>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>Write an entry</h2>
-    <p class="sub">Required: timestamp, tenant ID, school ID. Everything else is free-form — add any key/value pairs.</p>
-    <div class="row">
-      <div class="field"><label>Timestamp (UTC)</label><input id="fDate" type="datetime-local" /></div>
-      <div class="field"><label>Tenant ID</label><input id="fTenantId" value="DaymapHostDev" /></div>
-      <div class="field"><label>School ID</label><input id="fSchoolId" value="DaymapDev" /></div>
-      <div class="field"><label>User ID</label><input id="fUserId" value="1642" /></div>
-    </div>
-    <div class="row" style="margin-top:12px;">
-      <div class="field"><label>Event Type</label><input id="fEventType" value="Read" /></div>
-      <div class="field"><label>Entity Type</label><input id="fEntityType" value="Parent" /></div>
-      <div class="field"><label>Entity ID</label><input id="fEntityId" value="47" /></div>
-      <div class="field"><label>Application</label><input id="fApplication" value="ParentPortal" /></div>
-    </div>
-    <div class="row" style="margin-top:12px;">
-      <div class="field grow">
-        <label>Extra fields (JSON — anything not covered above, e.g. category, data)</label>
-        <textarea id="fExtra">{"category": "StudentProfile", "success": true, "data": {}}</textarea>
-      </div>
-    </div>
-    <div class="row" style="margin-top:12px;">
-      <button id="submitBtn">Submit Entry</button>
-    </div>
-    <div id="writeStatus" class="status"></div>
-  </section>
-
-  <section class="card">
-    <h2>Browse entries</h2>
-    <div class="row">
-      <div class="field"><label>Tenant ID</label><input id="qTenantId" placeholder="e.g. DaymapHostDev" /></div>
-      <div class="field"><label>School ID</label><input id="qSchoolId" placeholder="e.g. DaymapDev" /></div>
-      <div class="field"><label>User ID</label><input id="qUserId" placeholder="e.g. 1642" /></div>
-      <div class="field"><label>Event Type</label><input id="qEventType" placeholder="e.g. Delete" /></div>
-      <div class="field"><label>Limit</label><input id="qLimit" type="number" value="25" /></div>
-      <button id="loadBtn">Load Entries</button>
-    </div>
-    <div id="readStatus" class="status"></div>
-    <div id="entriesContainer"></div>
-  </section>
-
-</main>
-
-<script>
-  const baseUrl = '';
-
-  function showStatus(el, ok, message) {
-    el.textContent = message;
-    el.className = 'status show ' + (ok ? 'ok' : 'bad');
-  }
-
-  document.getElementById('submitBtn').addEventListener('click', async () => {
-    const status = document.getElementById('writeStatus');
-    let extra = {};
-    try {
-      extra = JSON.parse(document.getElementById('fExtra').value || '{}');
-    } catch (e) {
-      showStatus(status, false, 'Extra fields must be valid JSON.');
-      return;
-    }
-    const dateVal = document.getElementById('fDate').value;
-    const entry = {
-      timestampUtc: dateVal ? new Date(dateVal).toISOString() : new Date().toISOString(),
-      tenantId: document.getElementById('fTenantId').value,
-      schoolId: document.getElementById('fSchoolId').value,
-      userId: document.getElementById('fUserId').value,
-      eventType: document.getElementById('fEventType').value,
-      entityType: document.getElementById('fEntityType').value,
-      entityId: document.getElementById('fEntityId').value,
-      application: document.getElementById('fApplication').value,
-      ...extra,
-    };
-    try {
-      const res = await fetch(`${baseUrl}/entries`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entry),
-      });
-      const body = await res.json();
-      if (!res.ok) {
-        showStatus(status, false, `${res.status}: ${JSON.stringify(body)}`);
-        return;
+  <head>
+    <meta charset="UTF-8" />
+    <title>Daymap Audit System — Demo</title>
+    <style>
+      :root {
+        --ink: #1a1a1a;
+        --muted: #6b6b6b;
+        --border: #e0e0e0;
+        --accent: #2a5d8f;
+        --accent-light: #e8f1fa;
+        --live: #1e7d3c;
+        --live-bg: #e6f4ea;
+        --planned: #8a8a8a;
+        --planned-bg: #f0f0f0;
+        --bg: #fafafa;
+        --card: #ffffff;
       }
-      showStatus(status, true, `✓ Entry written (accepted: ${body.accepted}).`);
-    } catch (err) {
-      showStatus(status, false, `Network error: ${err.message}`);
-    }
-  });
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      header {
+        padding: 28px 32px 20px;
+        border-bottom: 1px solid var(--border);
+        background: var(--card);
+      }
+      header h1 {
+        margin: 0 0 4px;
+        font-size: 22px;
+      }
+      header p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      main {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 24px 32px 64px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 24px;
+      }
+      .card h2 {
+        margin: 0 0 4px;
+        font-size: 15px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+      .card .sub {
+        font-size: 13px;
+        color: var(--muted);
+        margin: 0 0 16px;
+      }
 
-  function renderEntries(container, entries) {
-    if (!entries || entries.length === 0) {
-      container.innerHTML = '<div class="empty">No entries found for this filter.</div>';
-      return;
-    }
-    const rows = entries.map((e) => {
-      return `
+      /* --- Architecture diagram --- */
+      .diagram {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 12px 0;
+      }
+      .diagram-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .box {
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        text-align: center;
+        min-width: 120px;
+      }
+      .box .tag {
+        display: block;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 4px;
+      }
+      .box.live {
+        background: var(--live-bg);
+        color: var(--live);
+        border: 1px solid var(--live);
+      }
+      .box.live .tag {
+        color: var(--live);
+      }
+      .box.planned {
+        background: var(--planned-bg);
+        color: var(--planned);
+        border: 1px dashed var(--planned);
+      }
+      .box.planned .tag {
+        color: var(--planned);
+      }
+      .arrow {
+        color: var(--muted);
+        font-size: 20px;
+      }
+      .legend {
+        display: flex;
+        gap: 20px;
+        margin-top: 16px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .dot.live {
+        background: var(--live);
+      }
+      .dot.planned {
+        background: var(--planned);
+      }
+
+      /* --- Forms --- */
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .field label {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .field input,
+      .field textarea,
+      .field select {
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 14px;
+        min-width: 160px;
+        font-family: inherit;
+      }
+      .field.grow {
+        flex: 1;
+        min-width: 260px;
+      }
+      .field.grow textarea {
+        width: 100%;
+        min-height: 70px;
+        resize: vertical;
+      }
+      button {
+        padding: 9px 16px;
+        border-radius: 6px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: white;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button:hover {
+        opacity: 0.9;
+      }
+      button.secondary {
+        background: white;
+        color: var(--accent);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        margin-top: 16px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      code,
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+
+      .status {
+        padding: 12px 14px;
+        border-radius: 8px;
+        font-size: 14px;
+        margin-top: 12px;
+        display: none;
+      }
+      .status.show {
+        display: block;
+      }
+      .status.ok {
+        background: var(--live-bg);
+        color: var(--live);
+      }
+      .status.bad {
+        background: #fce8e6;
+        color: #b3261e;
+      }
+      .empty {
+        color: var(--muted);
+        font-size: 13px;
+        padding: 12px 0;
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Daymap Audit System — Prototype</h1>
+      <p>
+        Live demo of the write + read API, API key auth, and archival — against a real PostgreSQL
+        database.
+      </p>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>Architecture</h2>
+        <p class="sub">What's actually running today, vs. what's designed but not built yet.</p>
+        <div class="diagram">
+          <div class="diagram-row">
+            <div class="box live">Client apps<span class="tag">sends entries</span></div>
+            <div class="arrow">→</div>
+            <div class="box live">Ingest / Query API<span class="tag">live — this page</span></div>
+            <div class="arrow">⇢</div>
+            <div class="box planned">Event Hubs queue<span class="tag">planned</span></div>
+            <div class="arrow">⇢</div>
+            <div class="box planned">Writer worker<span class="tag">planned</span></div>
+          </div>
+          <div class="arrow" style="align-self: center">↓</div>
+          <div class="diagram-row">
+            <div class="box live">PostgreSQL<span class="tag">live — hot storage</span></div>
+            <div class="arrow">⇢</div>
+            <div class="box live">Archival job<span class="tag">live</span></div>
+            <div class="arrow">⇢</div>
+            <div class="box live">Cold storage<span class="tag">live — local disk</span></div>
+          </div>
+          <div class="arrow" style="align-self: center">↑</div>
+          <div class="diagram-row">
+            <div class="box live">
+              API key store<span class="tag">live — auth on every request</span>
+            </div>
+          </div>
+        </div>
+        <div class="legend">
+          <span><i class="dot live"></i> Built and working right now</span>
+          <span><i class="dot planned"></i> Designed, not built this semester</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Connection</h2>
+        <p class="sub">
+          Every request needs an API key. Paste one below — it's saved in this browser only.
+        </p>
+        <div class="row">
+          <div class="field grow">
+            <label>API Key (x-api-key)</label><input id="apiKey" placeholder="dma_..." />
+          </div>
+        </div>
+        <p class="hint">
+          No key yet? Ask whoever set up the server to run <code>npm run create-admin-key</code> and
+          paste the result here.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Write an entry</h2>
+        <p class="sub">
+          Required: timestamp, tenant ID, school ID. Everything else is free-form — add any
+          key/value pairs.
+        </p>
+        <div class="row">
+          <div class="field">
+            <label>Timestamp (UTC)</label><input id="fDate" type="datetime-local" />
+          </div>
+          <div class="field">
+            <label>Tenant ID</label><input id="fTenantId" value="DaymapHostDev" />
+          </div>
+          <div class="field">
+            <label>School ID</label><input id="fSchoolId" value="DaymapDev" />
+          </div>
+          <div class="field"><label>User ID</label><input id="fUserId" value="1642" /></div>
+        </div>
+        <div class="row" style="margin-top: 12px">
+          <div class="field"><label>Event Type</label><input id="fEventType" value="Read" /></div>
+          <div class="field">
+            <label>Entity Type</label><input id="fEntityType" value="Parent" />
+          </div>
+          <div class="field"><label>Entity ID</label><input id="fEntityId" value="47" /></div>
+          <div class="field">
+            <label>Application</label><input id="fApplication" value="ParentPortal" />
+          </div>
+        </div>
+        <div class="row" style="margin-top: 12px">
+          <div class="field grow">
+            <label>Extra fields (JSON — anything not covered above, e.g. category, data)</label>
+            <textarea id="fExtra">
+{"category": "StudentProfile", "success": true, "data": {}}</textarea>
+          </div>
+        </div>
+        <div class="row" style="margin-top: 12px">
+          <button id="submitBtn">Submit Entry</button>
+        </div>
+        <div id="writeStatus" class="status"></div>
+      </section>
+
+      <section class="card">
+        <h2>Browse entries</h2>
+        <p class="sub">
+          Results are always filtered to what your API key is scoped to see, regardless of the
+          filters typed here.
+        </p>
+        <div class="row">
+          <div class="field">
+            <label>Tenant ID</label><input id="qTenantId" placeholder="e.g. DaymapHostDev" />
+          </div>
+          <div class="field">
+            <label>School ID</label><input id="qSchoolId" placeholder="e.g. DaymapDev" />
+          </div>
+          <div class="field">
+            <label>User ID</label><input id="qUserId" placeholder="e.g. 1642" />
+          </div>
+          <div class="field">
+            <label>Event Type</label><input id="qEventType" placeholder="e.g. Delete" />
+          </div>
+          <div class="field">
+            <label>Limit</label><input id="qLimit" type="number" value="25" />
+          </div>
+          <button id="loadBtn">Load Entries</button>
+        </div>
+        <div id="readStatus" class="status"></div>
+        <div id="entriesContainer"></div>
+      </section>
+
+      <section class="card">
+        <h2>API keys <span class="hint">(admin only)</span></h2>
+        <div class="row">
+          <div class="field">
+            <label>Label</label><input id="kLabel" placeholder="e.g. tenant-a-writer" />
+          </div>
+          <div class="field">
+            <label>Permission</label>
+            <select id="kPermission">
+              <option value="read">read</option>
+              <option value="write" selected>write</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Scope type</label>
+            <select id="kScopeType">
+              <option value="tenant">tenant</option>
+              <option value="school">school</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Scope value</label><input id="kScopeValue" placeholder="e.g. DaymapHostDev" />
+          </div>
+          <div class="field">
+            <label>Scope tenant (school scope only)</label
+            ><input id="kScopeTenant" placeholder="required for school scope" />
+          </div>
+          <button id="createKeyBtn">Create Key</button>
+        </div>
+        <div id="keyStatus" class="status"></div>
+        <div class="row" style="margin-top: 12px">
+          <button id="listKeysBtn" class="secondary">List Keys</button>
+        </div>
+        <div id="keysContainer"></div>
+      </section>
+
+      <section class="card">
+        <h2>Archival <span class="hint">(admin only)</span></h2>
+        <p class="sub">
+          Moves entries older than the configured retention window from Postgres into cold storage
+          files.
+        </p>
+        <div class="row">
+          <button id="runArchiveBtn">Run Archival Now</button>
+          <button id="viewColdStorageBtn" class="secondary">View Cold Storage</button>
+        </div>
+        <div id="archiveStatus" class="status"></div>
+        <div id="coldStorageContainer"></div>
+      </section>
+    </main>
+
+    <script>
+      const baseUrl = '';
+      const apiKeyInput = document.getElementById('apiKey');
+      try {
+        apiKeyInput.value = localStorage.getItem('daymap_api_key') || '';
+      } catch (e) {}
+      apiKeyInput.addEventListener('change', () => {
+        try {
+          localStorage.setItem('daymap_api_key', apiKeyInput.value);
+        } catch (e) {}
+      });
+
+      function authHeaders(extra) {
+        return { 'x-api-key': apiKeyInput.value, ...extra };
+      }
+
+      function showStatus(el, ok, message) {
+        el.textContent = message;
+        el.className = 'status show ' + (ok ? 'ok' : 'bad');
+      }
+
+      document.getElementById('submitBtn').addEventListener('click', async () => {
+        const status = document.getElementById('writeStatus');
+        let extra = {};
+        try {
+          extra = JSON.parse(document.getElementById('fExtra').value || '{}');
+        } catch (e) {
+          showStatus(status, false, 'Extra fields must be valid JSON.');
+          return;
+        }
+        const dateVal = document.getElementById('fDate').value;
+        const entry = {
+          timestampUtc: dateVal ? new Date(dateVal).toISOString() : new Date().toISOString(),
+          tenantId: document.getElementById('fTenantId').value,
+          schoolId: document.getElementById('fSchoolId').value,
+          userId: document.getElementById('fUserId').value,
+          eventType: document.getElementById('fEventType').value,
+          entityType: document.getElementById('fEntityType').value,
+          entityId: document.getElementById('fEntityId').value,
+          application: document.getElementById('fApplication').value,
+          ...extra,
+        };
+        try {
+          const res = await fetch(`${baseUrl}/entries`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(entry),
+          });
+          const body = await res.json();
+          if (!res.ok) {
+            showStatus(status, false, `${res.status}: ${JSON.stringify(body)}`);
+            return;
+          }
+          showStatus(status, true, `✓ Entry written (accepted: ${body.accepted}).`);
+        } catch (err) {
+          showStatus(status, false, `Network error: ${err.message}`);
+        }
+      });
+
+      function renderEntries(container, entries) {
+        if (!entries || entries.length === 0) {
+          container.innerHTML = '<div class="empty">No entries found for this filter.</div>';
+          return;
+        }
+        const rows = entries
+          .map((e) => {
+            return `
         <tr>
           <td class="mono">${e.sequence}</td>
           <td class="mono">${new Date(e.timestampUtc).toLocaleString()}</td>
@@ -269,45 +506,171 @@
           <td class="mono">${JSON.stringify(e.extra)}</td>
         </tr>
       `;
-    }).join('');
-    container.innerHTML = `
+          })
+          .join('');
+        container.innerHTML = `
       <table>
         <thead><tr><th>Seq</th><th>Timestamp</th><th>Tenant</th><th>School</th><th>User</th><th>Event</th><th>Entity</th><th>Extra</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     `;
-  }
-
-  document.getElementById('loadBtn').addEventListener('click', async () => {
-    const status = document.getElementById('readStatus');
-    const container = document.getElementById('entriesContainer');
-    const params = new URLSearchParams();
-    const tenantId = document.getElementById('qTenantId').value.trim();
-    const schoolId = document.getElementById('qSchoolId').value.trim();
-    const userId = document.getElementById('qUserId').value.trim();
-    const eventType = document.getElementById('qEventType').value.trim();
-    const limit = document.getElementById('qLimit').value.trim();
-    if (tenantId) params.set('tenantId', tenantId);
-    if (schoolId) params.set('schoolId', schoolId);
-    if (userId) params.set('userId', userId);
-    if (eventType) params.set('eventType', eventType);
-    if (limit) params.set('limit', limit);
-
-    try {
-      const res = await fetch(`${baseUrl}/entries?${params.toString()}`);
-      const body = await res.json();
-      if (!res.ok) {
-        showStatus(status, false, `${res.status}: ${JSON.stringify(body)}`);
-        container.innerHTML = '';
-        return;
       }
-      status.className = 'status';
-      renderEntries(container, body.data);
-    } catch (err) {
-      showStatus(status, false, `Network error: ${err.message}`);
-    }
-  });
-</script>
 
-</body>
+      document.getElementById('loadBtn').addEventListener('click', async () => {
+        const status = document.getElementById('readStatus');
+        const container = document.getElementById('entriesContainer');
+        const params = new URLSearchParams();
+        const tenantId = document.getElementById('qTenantId').value.trim();
+        const schoolId = document.getElementById('qSchoolId').value.trim();
+        const userId = document.getElementById('qUserId').value.trim();
+        const eventType = document.getElementById('qEventType').value.trim();
+        const limit = document.getElementById('qLimit').value.trim();
+        if (tenantId) params.set('tenantId', tenantId);
+        if (schoolId) params.set('schoolId', schoolId);
+        if (userId) params.set('userId', userId);
+        if (eventType) params.set('eventType', eventType);
+        if (limit) params.set('limit', limit);
+
+        try {
+          const res = await fetch(`${baseUrl}/entries?${params.toString()}`, {
+            headers: authHeaders(),
+          });
+          const body = await res.json();
+          if (!res.ok) {
+            showStatus(status, false, `${res.status}: ${JSON.stringify(body)}`);
+            container.innerHTML = '';
+            return;
+          }
+          status.className = 'status';
+          renderEntries(container, body.data);
+        } catch (err) {
+          showStatus(status, false, `Network error: ${err.message}`);
+        }
+      });
+
+      document.getElementById('createKeyBtn').addEventListener('click', async () => {
+        const status = document.getElementById('keyStatus');
+        const scopeType = document.getElementById('kScopeType').value;
+        const scopeValue = document.getElementById('kScopeValue').value.trim();
+        const scopeTenant = document.getElementById('kScopeTenant').value.trim();
+        const permission = document.getElementById('kPermission').value;
+
+        const scopes = [];
+        if (scopeValue) {
+          const scope = { scopeType, scopeValue };
+          if (scopeType === 'school') scope.scopeTenantId = scopeTenant;
+          scopes.push(scope);
+        }
+
+        try {
+          const res = await fetch(`${baseUrl}/api-keys`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({
+              label: document.getElementById('kLabel').value || undefined,
+              permission,
+              scopes,
+            }),
+          });
+          const body = await res.json();
+          if (!res.ok) {
+            showStatus(status, false, `${res.status}: ${JSON.stringify(body)}`);
+            return;
+          }
+          showStatus(status, true, `✓ Key created (copy now, shown once): ${body.rawKey}`);
+        } catch (err) {
+          showStatus(status, false, `Network error: ${err.message}`);
+        }
+      });
+
+      document.getElementById('listKeysBtn').addEventListener('click', async () => {
+        const container = document.getElementById('keysContainer');
+        try {
+          const res = await fetch(`${baseUrl}/api-keys`, { headers: authHeaders() });
+          const keys = await res.json();
+          if (!res.ok) {
+            container.innerHTML = `<div class="empty">${res.status}: ${JSON.stringify(keys)}</div>`;
+            return;
+          }
+          if (keys.length === 0) {
+            container.innerHTML = '<div class="empty">No keys yet.</div>';
+            return;
+          }
+          const rows = keys
+            .map(
+              (k) => `
+        <tr>
+          <td class="mono">${k.id}</td>
+          <td>${k.label || ''}</td>
+          <td class="mono">${k.permission}</td>
+          <td class="mono">${(k.scopes || []).map((s) => (s.scopeType === 'school' ? `${s.scopeTenantId}/${s.scopeValue}` : s.scopeValue)).join(', ')}</td>
+          <td>${k.revokedAt ? 'revoked' : 'active'}</td>
+        </tr>
+      `,
+            )
+            .join('');
+          container.innerHTML = `
+        <table>
+          <thead><tr><th>ID</th><th>Label</th><th>Permission</th><th>Scopes</th><th>Status</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+        } catch (err) {
+          container.innerHTML = `<div class="empty">Network error: ${err.message}</div>`;
+        }
+      });
+
+      document.getElementById('runArchiveBtn').addEventListener('click', async () => {
+        const status = document.getElementById('archiveStatus');
+        try {
+          const res = await fetch(`${baseUrl}/admin/archive`, {
+            method: 'POST',
+            headers: authHeaders(),
+          });
+          const body = await res.json();
+          if (!res.ok) {
+            showStatus(status, false, `${res.status}: ${JSON.stringify(body)}`);
+            return;
+          }
+          showStatus(
+            status,
+            true,
+            `✓ Archived ${body.entriesArchived} entries across ${body.batchesProcessed} batch(es), ${body.filesWritten.length} file(s) touched.`,
+          );
+        } catch (err) {
+          showStatus(status, false, `Network error: ${err.message}`);
+        }
+      });
+
+      document.getElementById('viewColdStorageBtn').addEventListener('click', async () => {
+        const container = document.getElementById('coldStorageContainer');
+        try {
+          const res = await fetch(`${baseUrl}/admin/cold-storage`, { headers: authHeaders() });
+          const body = await res.json();
+          if (!res.ok) {
+            container.innerHTML = `<div class="empty">${res.status}: ${JSON.stringify(body)}</div>`;
+            return;
+          }
+          if (!body.files || body.files.length === 0) {
+            container.innerHTML = '<div class="empty">No archived files yet.</div>';
+            return;
+          }
+          const rows = body.files
+            .map(
+              (f) =>
+                `<tr><td>${f.day}</td><td class="mono">${f.file}</td><td>${f.entryCount}</td></tr>`,
+            )
+            .join('');
+          container.innerHTML = `
+        <table>
+          <thead><tr><th>Day</th><th>File</th><th>Entries</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+        } catch (err) {
+          container.innerHTML = `<div class="empty">Network error: ${err.message}</div>`;
+        }
+      });
+    </script>
+  </body>
 </html>

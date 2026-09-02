@@ -6,3 +6,5 @@ coverage/
 *.log
 exports/
 .DS_Store
+cold-storage/
+cold-storage-test/

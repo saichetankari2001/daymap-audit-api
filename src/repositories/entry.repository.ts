@@ -68,7 +68,10 @@ export const EntryRepository = {
     return latest?.sequence ?? 0;
   },
 
-  async findMany(filters: EntryQueryInput): Promise<EntryPage> {
+  async findMany(
+    filters: EntryQueryInput,
+    scopeWhere?: Prisma.EntryWhereInput,
+  ): Promise<EntryPage> {
     const snapshotSequence =
       filters.snapshotSequence ?? (await EntryRepository.findLatestSequence());
 
@@ -77,6 +80,7 @@ export const EntryRepository = {
           extra: { path: [key], equals: value },
         }))
       : [];
+    const andConditions = scopeWhere ? [...extraConditions, scopeWhere] : extraConditions;
 
     const where: Prisma.EntryWhereInput = {
       tenantId: filters.tenantId,
@@ -94,7 +98,7 @@ export const EntryRepository = {
         gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
         lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
       },
-      AND: extraConditions.length > 0 ? extraConditions : undefined,
+      AND: andConditions.length > 0 ? andConditions : undefined,
     };
 
     const rows = await prisma.entry.findMany({

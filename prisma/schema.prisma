@@ -55,3 +55,50 @@ model Entry {
   @@index([success])
   @@map("entries")
 }
+
+// One row per API key. Only the hash is ever stored — the raw key is shown
+// once, at creation time, same principle as password storage.
+//
+// permission is "read" | "write" | "admin". Read/write keys must carry at
+// least one scope; admin keys bypass scope checks entirely and can also
+// manage other keys (create/revoke) — this "admin manages keys" role is our
+// own addition on top of Harry's brief (which only specified read/write
+// roles), since something has to be able to issue keys. Flagged to Harry as
+// an assumption worth confirming, not something we're treating as settled.
+model ApiKey {
+  id         String        @id @default(uuid())
+  hashedKey  String        @unique @map("hashed_key")
+  label      String?
+  permission String
+  revokedAt  DateTime?     @map("revoked_at")
+  createdAt  DateTime      @default(now()) @map("created_at")
+  scopes     ApiKeyScope[]
+
+  @@index([hashedKey])
+  @@map("api_keys")
+}
+
+// A key can carry multiple scope rows — e.g. valid for schools "111" and
+// "222", or valid for tenant "DaymapHostDev" (which, per Harry, implies
+// every school under that tenant).
+//
+// scopeTenantId is required for "school"-type rows: a school ID alone is
+// not enough to scope a key correctly, because school IDs are not
+// guaranteed unique across tenants (Harry's own sample data models tenant
+// and school as two separate fields, which is exactly the case where a
+// generic school code could collide between two unrelated districts). A
+// school scope always means "this specific school, under this specific
+// tenant" — never a bare school ID matched against any tenant. It's null
+// for "tenant"-type rows, since a tenant scope is tenant-wide by definition.
+model ApiKeyScope {
+  id            String  @id @default(uuid())
+  apiKeyId      String  @map("api_key_id")
+  apiKey        ApiKey  @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  scopeType     String  @map("scope_type") // "tenant" | "school"
+  scopeValue    String  @map("scope_value") // tenantId, or schoolId
+  scopeTenantId String? @map("scope_tenant_id") // required when scopeType = "school"
+
+  @@index([apiKeyId])
+  @@index([scopeType, scopeTenantId, scopeValue])
+  @@map("api_key_scopes")
+}

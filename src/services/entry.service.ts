@@ -6,7 +6,7 @@ export const EntryService = {
     return EntryRepository.createBatch(entries);
   },
 
-  query(filters: EntryQueryInput): Promise<EntryPage> {
-    return EntryRepository.findMany(filters);
+  query(filters: EntryQueryInput, scopeWhere?: Record<string, unknown>): Promise<EntryPage> {
+    return EntryRepository.findMany(filters, scopeWhere);
   },
 };
