@@ -17,7 +17,8 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "archive": "ts-node src/jobs/archival/runArchival.ts",
     "archive:schedule": "ts-node src/jobs/archival/runArchival.ts --schedule",
-    "create-admin-key": "ts-node src/scripts/createAdminKey.ts"
+    "create-admin-key": "ts-node src/scripts/createAdminKey.ts",
+    "seed": "ts-node src/scripts/seedSampleData.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",
