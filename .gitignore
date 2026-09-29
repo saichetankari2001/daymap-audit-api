@@ -8,3 +8,5 @@ exports/
 .DS_Store
 cold-storage/
 cold-storage-test/
+evidence/
+load-test-results/

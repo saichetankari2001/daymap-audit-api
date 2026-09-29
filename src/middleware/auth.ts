@@ -74,16 +74,27 @@ export function requirePermission(required: Permission): RequestHandler {
   };
 }
 
+// Tenant/school identifiers are matched case-insensitively: Daymap's callers
+// aren't guaranteed to send a given tenant/school ID with consistent casing
+// (e.g. "DaymapDev" vs "daymapdev" are the same tenant), so a scope created
+// with one casing must still match a request using another. Comparison-only —
+// stored values keep whatever casing they were written with.
+const normalize = (value: string): string => value.toLowerCase();
+
 /**
  * A tenant scope covers every school under it; a school scope covers only
  * that exact (tenant, school) pair — never a same-named school under a
  * different tenant. Admin bypasses scoping entirely.
  */
 export function keyCanAccess(key: AuthedKey, tenantId: string, schoolId: string): boolean {
+  const normTenantId = normalize(tenantId);
+  const normSchoolId = normalize(schoolId);
   return (
     key.isAdmin ||
-    key.tenants.includes(tenantId) ||
-    key.schools.some((s) => s.tenantId === tenantId && s.schoolId === schoolId)
+    key.tenants.some((t) => normalize(t) === normTenantId) ||
+    key.schools.some(
+      (s) => normalize(s.tenantId) === normTenantId && normalize(s.schoolId) === normSchoolId,
+    )
   );
 }
 
@@ -92,9 +103,14 @@ export function scopeWhereClause(key: AuthedKey): Record<string, unknown> | unde
   if (key.isAdmin) return undefined;
 
   const or: Record<string, unknown>[] = [];
-  if (key.tenants.length > 0) or.push({ tenantId: { in: key.tenants } });
+  for (const tenant of key.tenants) {
+    or.push({ tenantId: { equals: tenant, mode: 'insensitive' } });
+  }
   for (const school of key.schools) {
-    or.push({ tenantId: school.tenantId, schoolId: school.schoolId });
+    or.push({
+      tenantId: { equals: school.tenantId, mode: 'insensitive' },
+      schoolId: { equals: school.schoolId, mode: 'insensitive' },
+    });
   }
 
   return or.length > 0 ? { OR: or } : { id: 'no-scopes-configured-for-this-key' };

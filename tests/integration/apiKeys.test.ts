@@ -130,6 +130,69 @@ describe('School-scoped keys', () => {
   });
 });
 
+describe('Case-insensitive identifier matching', () => {
+  // Regression test for a known limitation: tenant/school scope checks were
+  // doing exact string comparison, so a key scoped to "DaymapDev" would be
+  // rejected for an otherwise-identical "daymapdev" — the same tenant, just
+  // a different casing a caller happened to use. Identifiers should match
+  // regardless of case on both the write-side permission check and the
+  // read-side query scoping.
+  it('a tenant-scoped key can write using a different case than the scope was created with', async () => {
+    const key = await createTestKey({
+      permission: 'write',
+      scopes: [{ scopeType: 'tenant', scopeValue: 'DaymapHostDev' }],
+    });
+
+    const res = await request(app)
+      .post('/entries')
+      .set('x-api-key', key)
+      .send(entry({ tenantId: 'daymaphostdev', schoolId: 'DaymapDev' }));
+    expect(res.status).toBe(201);
+  });
+
+  it('a school-scoped key can write using a different case for both tenant and school', async () => {
+    const key = await createTestKey({
+      permission: 'write',
+      scopes: [{ scopeType: 'school', scopeValue: 'DaymapDev', scopeTenantId: 'DaymapHostDev' }],
+    });
+
+    const res = await request(app)
+      .post('/entries')
+      .set('x-api-key', key)
+      .send(entry({ tenantId: 'DAYMAPHOSTDEV', schoolId: 'daymapdev' }));
+    expect(res.status).toBe(201);
+  });
+
+  it('read-side scoping also matches case-insensitively', async () => {
+    await request(app)
+      .post('/entries')
+      .set('x-api-key', adminKey)
+      .send(entry({ tenantId: 'DaymapHostDev', schoolId: 'DaymapDev' }));
+
+    const readKey = await createTestKey({
+      permission: 'read',
+      scopes: [{ scopeType: 'tenant', scopeValue: 'daymaphostdev' }],
+    });
+
+    const res = await request(app).get('/entries').set('x-api-key', readKey).query({ limit: 50 });
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+  });
+
+  it('still rejects a genuinely different tenant, case aside', async () => {
+    const key = await createTestKey({
+      permission: 'write',
+      scopes: [{ scopeType: 'tenant', scopeValue: 'DaymapHostDev' }],
+    });
+
+    const res = await request(app)
+      .post('/entries')
+      .set('x-api-key', key)
+      .send(entry({ tenantId: 'RiverbendDistrict', schoolId: 'Riverbend-High' }));
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('Permission levels', () => {
   it('a read-only key cannot write, even within its own scope', async () => {
     const key = await createTestKey({
