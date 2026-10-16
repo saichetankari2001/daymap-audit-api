@@ -1,4 +1,3 @@
-
 import { generateRawKey, hashKey } from '../../../src/lib/apiKeys';
 
 describe('generateRawKey', () => {

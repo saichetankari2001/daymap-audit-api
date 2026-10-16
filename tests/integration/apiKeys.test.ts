@@ -323,38 +323,30 @@ describe('Key management (admin only)', () => {
     const useRes = await request(app).get('/entries').set('x-api-key', rawKey);
     expect(useRes.status).toBe(401);
   });
-  
+
   it('rejects write requests immediately after a write key is revoked', async () => {
-  const createRes = await request(app)
-    .post('/api-keys')
-    .set('x-api-key', adminKey)
-    .send({
-      permission: 'write',
-      scopes: [{ scopeType: 'tenant', scopeValue: 'TenantA' }],
-    });
+    const createRes = await request(app)
+      .post('/api-keys')
+      .set('x-api-key', adminKey)
+      .send({
+        permission: 'write',
+        scopes: [{ scopeType: 'tenant', scopeValue: 'TenantA' }],
+      });
 
-  expect(createRes.status).toBe(201);
+    expect(createRes.status).toBe(201);
 
-  const { id, rawKey } = createRes.body;
+    const { id, rawKey } = createRes.body;
 
-  const beforeRevoke = await request(app)
-    .post('/entries')
-    .set('x-api-key', rawKey)
-    .send(entry());
+    const beforeRevoke = await request(app).post('/entries').set('x-api-key', rawKey).send(entry());
 
-  expect(beforeRevoke.status).toBe(201);
+    expect(beforeRevoke.status).toBe(201);
 
-  const revokeRes = await request(app)
-    .delete(`/api-keys/${id}`)
-    .set('x-api-key', adminKey);
+    const revokeRes = await request(app).delete(`/api-keys/${id}`).set('x-api-key', adminKey);
 
-  expect(revokeRes.status).toBe(204);
+    expect(revokeRes.status).toBe(204);
 
-  const afterRevoke = await request(app)
-    .post('/entries')
-    .set('x-api-key', rawKey)
-    .send(entry());
+    const afterRevoke = await request(app).post('/entries').set('x-api-key', rawKey).send(entry());
 
-  expect(afterRevoke.status).toBe(401);
-});
+    expect(afterRevoke.status).toBe(401);
+  });
 });
