@@ -17,6 +17,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "archive": "ts-node src/jobs/archival/runArchival.ts",
     "archive:schedule": "ts-node src/jobs/archival/runArchival.ts --schedule",
+    "cold-storage:read": "ts-node src/scripts/readColdStorage.ts",
     "create-admin-key": "ts-node src/scripts/createAdminKey.ts",
     "seed": "ts-node src/scripts/seedSampleData.ts"
   },
