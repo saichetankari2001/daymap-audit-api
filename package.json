@@ -1,8 +1,13 @@
 {
   "name": "daymap-audit-api",
   "version": "0.1.0",
+  "description": "Audit-logging microservice for Daymap (Civica) — tracks access to sensitive student data with tenant/school-scoped API keys and automatic archival",
   "private": true,
   "main": "dist/server.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/saichetankari2001/daymap-audit-api.git"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
